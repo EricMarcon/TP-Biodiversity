@@ -1,0 +1,731 @@
+---
+title: "Measuring Biodiversity"
+output:
+  learnr::tutorial:
+    progressive: true
+    allow_skip: true
+runtime: shiny_prerendered
+---
+
+```{r preparation, include=FALSE}
+# Installation of packages if necessary
+InstallPackages <- function(Packages) {
+  InstallPackage <- function(Package) {
+    if (!Package %in% installed.packages()[, 1]) {
+      install.packages(Package, repos="https://cran.rstudio.com/")
+    }
+  }
+  invisible(sapply(Packages, InstallPackage))
+}
+
+# Basic packages
+InstallPackages(c("knitr", "learnr", "tidyverse", "gridExtra", "magrittr"))
+library("learnr")
+
+# Tidyverse default options
+library("tidyverse")
+# Set ggplotting to bw plot default, but with transparent background elements.  
+theme_set(theme_bw(base_size=12))
+theme_update(panel.background = element_rect(fill = "transparent", colour = NA),
+             plot.background = element_rect(fill = "transparent", colour = NA))
+knitr::opts_chunk$set(dev.args=list(bg="transparent"))
+
+# Packages for this document
+InstallPackages(c("entropart", "ape", "cluster", "SPECIES", "fundiversity"))
+```
+
+
+## Presentation
+
+This is the practical for the Biodiversity Measurement course.
+
+The [slideshow](https://1drv.ms/p/s!Amvhelr37CHjmolPddkD-D6YS7GGbw?e=cl8bLb)is online.
+
+
+## Data
+
+```{r setup, include=FALSE}
+# Data available for all exercises
+
+# Paracou6 : Paracou database. 
+library("tidyverse")
+library("entropart")
+Paracou6 <- read_csv2("data/Paracou6.csv")
+
+# AbdP6 : number of trees per species.
+Paracou6 %>% 
+  group_by(spName) %>% 
+  summarize(Abundance = n(), .groups = 'drop') ->
+  # Tibble
+  tblAbdP6
+# Build a named vector
+AbdP6 <- tblAbdP6$Abundance
+names(AbdP6) <- tblAbdP6$spName
+# Abundance vector
+library("entropart")
+AbdP6 %>% as.AbdVector -> AbdP6
+
+# p6Phylo : Phylogeny
+library("ape")
+library("magrittr")
+Paracou6 %>%
+  select(Family, Genus, spName) %>% 
+  # Requires factors
+  mutate_if(is.character, as.factor)  %>% 
+  # Create the phylogeny
+  {as.phylo(~Family/Genus/spName, data=., collapse=FALSE)} %>% 
+  # Branch lengths are identical
+  compute.brlen(method=1) %>% 
+  # Turn multichotomies to dichotomies
+  multi2di  %>%  
+  # Merge branches without divergence 
+  collapse.singles ->
+  p6Phylo
+
+# Z: Similarity matrix
+read_csv2("data/traits.csv") -> Traits
+library("cluster")
+# Use a dataframe to name the rows
+dfTraits <- as.data.frame(Traits)
+rownames(dfTraits) <- Traits$spName
+dfTraits %>% 
+  # Keep P6 species only
+  filter(spName %in% names(AbdP6)) %>% 
+  # Keep trait values only
+  select(-(Family:spName)) %>% 
+  # Compute distance between rows
+  daisy(metric="gower") ->
+  DistSpecies
+# Dissimilarities
+DistSpecies %<>% as.matrix
+Z <- 1 - DistSpecies/max(DistSpecies)
+
+# dfAbdP6SubPlots: abundances per subplot
+Paracou6 %>% 
+  # Grouing
+  group_by(SubPlot, spName) %>% 
+  # Number of trees per species and subbplot
+  summarize(Abundance = n(), .groups = "drop") %>% 
+  # A column per subplot
+  spread(key = SubPlot, value = Abundance, fill = 0)  %>% 
+  # Use a dataframe to name the rows
+  as.data.frame ->
+  dfAbdP6SubPlots
+# Prepare a metacommunity: row names
+rownames(dfAbdP6SubPlots) <- dfAbdP6SubPlots$spName
+# Delete the column with species names
+dfAbdP6SubPlots <- dfAbdP6SubPlots[, -1]
+# Column names: C1, C2, C3 and C4
+colnames(dfAbdP6SubPlots) <- paste("C", colnames(dfAbdP6SubPlots), sep = "")
+```
+
+### Reading Paracou database
+
+2016 Inventory. 
+
+```{r Paracou6}
+library("tidyverse")
+Paracou6 <- read_csv2("data/Paracou6.csv")
+# Show the data
+Paracou6
+```
+
+
+
+
+### Map
+
+The map of P6 wapas is made with **ggplot2**. 
+
+```{r CarteP6, exercise=TRUE}
+Paracou6 %>% filter(Genus == "Eperua") %>%
+  ggplot() + 
+  geom_point(aes(x = Xfield, y = Yfield, size = CircCorr, color = Species)) + 
+  coord_fixed() + 
+  scale_color_brewer(palette = "Set1") +
+  labs(
+    x = "X", 
+    y = "Y", 
+    caption = "Paracou, plot 6", 
+    size = "Circumference", 
+    color = "Species"
+  )
+```
+
+
+### Rank Abundance Curve
+
+First create the vector of abundances.
+
+```{r AbdP6}
+# Count
+Paracou6 %>% 
+  group_by(spName) %>% 
+  summarize(Abundance = n(), .groups = 'drop') ->
+  # Tibble 
+  tblAbdP6
+# Build a named vector
+AbdP6 <- tblAbdP6$Abundance
+names(AbdP6) <- tblAbdP6$spName
+# Vector of abundances
+library("entropart")
+AbdP6 %>% as.AbdVector -> AbdP6
+```
+
+Produce a Whittaker plot with ggplot, fitting a lognormal distribution.
+
+```{r Whittaker, exercise=TRUE, hint=TRUE}
+library("entropart")
+```
+
+```{r Whittaker-hint}
+?SpeciesDistribution
+```
+
+
+## Species-Neutral Diversity
+
+### Richness
+
+Count the number of species from the abundance vector: remember to eliminate the zeros if there are any.
+
+```{r Richesse1, exercise=TRUE, hint=TRUE}
+
+
+```
+
+```{r Richesse1-hint}
+length(AbdP6[AbdP6 > 0])
+sum(AbdP6 > 0)
+```
+
+How many singletons and doubletons are there in the community?
+
+```{r Singletons, exercise=TRUE, hint=TRUE}
+
+```
+
+```{r Singletons-hint}
+sum(AbdP6 == 1)
+```
+
+Use the function `Richness()` in **entropart**.
+
+```{r Richesse2, exercise=TRUE}
+AbdP6 %>%  Richness(Correction = "None")
+```
+
+Estimating richness with the Chao and Jackknife estimators.
+
+```{r Richesse3, exercise=TRUE, hint=TRUE}
+
+```
+
+```{r Richesse3-hint}
+?Richness
+```
+
+The internal algorithm for selecting the order of the Jackknife is that of Burnham and Overton (1978): the second-order Jackknife is chosen if the null hypothesis of equality of the first- and second-order estimators is rejected at the default risk threshold of 5% (which can be modified by the "Alpha" argument), which is the case here. 
+A higher order costs the estimator more variance: it is only justified if the estimated value is significantly different, which means that we can hope to reduce the bias (underestimation) due to an order that is too low.
+The criteria of Brose et al. (2003) suggest that the first-order Jackknife should be chosen because the proportion of singletons is less than one-third.
+The two approaches almost always agree: this is one of the rare cases where the choice is ambiguous.
+
+To force order 1, the argument `JackMax=1` can be used.
+
+Obtain the 95% confidence interval of the Jackknife 2 estimator with the package **SPECIES**.
+The data must be abundance frequencies, i.e. the number of species represented by each number of individuals.
+
+```{r SPECIES, exercise=TRUE}
+library("SPECIES")
+AbdP6 %>% AbdFreqCount() %>% jackknife(k=2) %$% CI
+```
+
+"lb" and "ub" are the upper and lower bounds.
+
+
+```{r Richesse-quiz, echo=FALSE}
+quiz(
+  question("What is the best estimator of the richness of plot 6?",
+    answer("Chao"),
+    answer("Jackknife 1"),
+    answer("Jackknife 2"),
+    answer("Jackknife 1 or 2, the choice is not clear",  correct = TRUE),
+    answer("Jackknife 3"),
+    allow_retry = TRUE,
+    incorrect = "See [the  course](https://ericmarcon.github.io/MesuresBioDiv2/chap-MesuresNeutres.html#techniques-destimation-non-param%C3%A9trique) and try again.\nJackknife 1 is preferable according to Brose et al. (2003) but the calculation algorithm chooses Jackknife 2."
+  ),
+  question("Is the estimate robust?",
+    answer("yes"),
+    answer("no, if jackknife 2 is used", correct = TRUE),
+    allow_retry = TRUE,
+    incorrect = "See [the course](https://ericmarcon.github.io/MesuresBioDiv2/chap-MesuresNeutres.html#techniques-destimation-non-param%C3%A9trique) and try again."
+  ),
+  question("Why?",
+    answer("The choice of the Jackknife order is unclear", correct = TRUE),
+    answer("Richness is severely underestimated"),
+    answer("The variance of the estimator increases with the order of the Jackknife", correct = TRUE),
+    allow_retry = TRUE,
+    incorrect = "See [the course](https://ericmarcon.github.io/MesuresBioDiv2/chap-MesuresNeutres.html#techniques-destimation-non-param%C3%A9trique) and try again."
+  )
+)
+```
+
+### Diversity
+
+Estimate the entropy and Shannon's diversity of plot 6 using the best estimator.
+
+```{r Shannon1, exercise=TRUE}
+AbdP6 %>% Shannon()
+AbdP6 %>% Diversity(q = 1)
+```
+
+Compare the diversity estimate with those of the ChaoJost estimator and the naive estimator.
+
+```{r Shannon2, exercise=TRUE, hint=TRUE}
+AbdP6 %>% Diversity(q = 1, Correction = "ChaoJost")
+AbdP6 %>% Diversity(q = 1, Correction = "None")
+```
+
+The estimation bias decreases with the order of the diversity. 
+It is very low for Simpson's diversity: check this.
+
+```{r Diversityq2, exercise=TRUE}
+AbdP6 %>% Diversity(q = 2)
+# Complete the code
+```
+
+The function `Diversity()` chooses the best default estimator, presently "UnveilJ". 
+The order of the Jackknife applied to the richness estimate cannot be forced and will therefore be 2.
+
+
+### Diversity profile
+
+Plot the diversity profile for plot 6 using the best estimator.
+
+```{r Profil1, exercise=TRUE}
+CommunityProfile(Diversity, AbdP6) %>% autoplot()
+```
+
+Compare with the naive profile.
+
+```{r Profil2, exercise=TRUE, message=FALSE}
+CommunityProfile(Diversity, AbdP6) %>% autoplot -> CPbest
+CommunityProfile(Diversity, AbdP6, Correction = "None") %>% autoplot() -> CPnone
+library("gridExtra")
+grid.arrange(CPbest, CPnone, ncol = 2, nrow = 1)
+```
+
+
+### Rarefaction and extrapolation
+
+Diversity can be estimated at an arbitrary level of sampling effort or coverage rate.
+
+Estimate the diversity observed with one hectare of inventory (the plot measures 6.25 ha).
+
+```{r Leveln, exercise=TRUE}
+Diversity(AbdP6, Level = round(sum(AbdP6) / 6.25))
+# Estimate richness rather than Shannon
+```
+
+Estimate the sample coverage.
+
+```{r Coverage, exercise=TRUE}
+Coverage(AbdP6)
+```
+
+Estimate the diversity for a 99% sample coverage and compare it with the asymptotic diversity (sample coverage equal to 100%).
+Estimate the richness to evaluate the number of species corresponding to the last percentage of coverage.
+
+```{r LevelC, exercise=TRUE}
+Diversity(AbdP6, Level=0.99)
+Diversity(AbdP6)
+# Estimate richness rather than Shannon
+```
+
+
+Plot the richness accumulation curve up to twice the size of the inventory.
+
+```{r DivAC, exercise=TRUE, exercise.timelimit=120}
+AbdP6 %>% 
+  DivAC(q = 1, n.seq = seq(from = 1, to = 2 * sum(AbdP6), by = 100)) %>% 
+  autoplot()
+# Try q = 1 and q = 2, by = 500 to fasten computation
+```
+
+
+```{r Diversite-quiz, echo=FALSE}
+quiz(
+  question("Estimation bias decreases with the order of diversity",
+    answer("True",  correct = TRUE),
+    answer("False"),
+    incorrect = "See [the course](https://ericmarcon.github.io/MesuresBioDiv2/entropie.html#estimation-de-lentropie)."
+  ),
+  question("Why?",
+    answer("The impact of rare species on diversity increases with q"),
+    answer("The impact of rare species on diversity decreases with q", correct = TRUE),
+    incorrect = "See [the course](https://ericmarcon.github.io/MesuresBioDiv2/entropie.html#estimation-de-lentropie)."
+  ),
+  question("What is the estimation technique for the UnveilJ estimator?",
+    answer("Probabilities are estimated using an elaborate model",  correct = TRUE),
+    answer("Probabilities are estimated by multiplying frequencies by the coverage rate"),
+    answer("The number of unobserved species is estimated by the Jackknife", correct = TRUE),
+    answer("Their distribution is geometric but of little importance", correct = TRUE),
+    allow_retry = TRUE,
+    incorrect = "See [the course](https://ericmarcon.github.io/MesuresBioDiv2/entropie.html#estimation-de-lentropie)."
+  )
+)
+```
+
+
+## Phylogenetic Diversity
+
+### Creation of a phylogeny
+
+A phylogeny can be created from the taxonomy.
+
+```{r p6Phylo, tidy=FALSE, message=FALSE}
+library("ape")
+library("magrittr")
+Paracou6 %>%
+  select(Family, Genus, spName) %>% 
+  # Requires factors
+  mutate_if(is.character, as.factor)  %>% 
+  # Create the phylogeny
+  {as.phylo(~Family/Genus/spName, data = ., collapse = FALSE)} %>% 
+  # Branch lengths are identical
+  compute.brlen(method=1) %>% 
+  # Turn multichotomies to dichotomies
+  multi2di  %>%  
+  # Merge branches without divergence 
+  collapse.singles ->
+  p6Phylo
+```
+
+
+Plot the phylogeny.
+
+```{r phylogenie, exercise=TRUE, hint=TRUE, exercise.timelimit=120}
+
+```
+
+```{r phylogenie-hint}
+p6Phylo %>% plot(type = "fan", show.tip.label = FALSE) 
+```
+
+
+### Phylogenetic Diversity Profile
+
+Estimate the Shannon phylogenetic diversity of plot 6 with the best estimator and plot it.
+
+```{r phyShannon, exercise=TRUE, exercise.timelimit=120}
+AbdP6 %>% PhyloDiversity(q = 1, Tree = p6Phylo) -> phyShannon6
+phyShannon6 %>% summary()
+# Complete the code
+```
+
+Explain the plot
+
+Plot the phylogenetic diversity profile.
+Reduce the number of points in `q.seq` and remplace `autoplot` by `plot` if the authorised calculation time is exceeded.
+
+```{r phyProfil, exercise=TRUE, exercise.timelimit=120}
+CommunityProfile(
+  function(X, ...) PhyloDiversity(X, ...)$Total,
+  AbdP6, 
+  q.seq = seq(from = 0, to = 2, by = 1), 
+  Tree = p6Phylo
+) %>% 
+  autoplot()
+# Choose the correction
+```
+
+Compare FD and richness.
+
+
+## Functional Diversity
+
+### Functional distance matrix
+
+The values for individual traits come from the Bridge project and are supplemented by average values per species from the literature compiled in the Mariwenn database.
+
+The individual traits are wood density and the logarithm of specific leaf area (SLA):
+  
+```{r TraitsIndividuels, message=FALSE}
+# Individual traits
+(read_csv2(file = "data/ind_traits_MICE.csv") %>% 
+    # Keep: botany, wood density, SLA
+    select(Family:Species, plot_code, sapwood_dens, log_SLA) %>% 
+    # Create the species names
+    unite(col = spName, Genus, Species, remove = FALSE) %>% 
+    # Group by species
+    group_by(Family, Genus, spName) %>% 
+    # Calculate the medians of the traits
+    summarize(DensiteBois = median(sapwood_dens), logSLA = median(log_SLA)) %>% 
+    # Suppression des groupes
+    ungroup() -> 
+    TraitsWoodLeaves)
+```
+
+The species traits are maximum height (95<sup>th</sup> percentile) and seed mass:
+
+```{r TraitsParEspeces, message=FALSE}
+# Species traits
+(read_csv2(file = "data/DataLifeTraits.csv") %>% 
+    # Select the traits
+    select(Name, Hauteur, Masse) %>% 
+    # Prepare merging by renaming the column
+    rename(spName = Name) %>% 
+    # Seed mass is an ordered factor
+    mutate(MasseGraine = ordered(Masse)) %>% 
+    # Delete the original column
+    select(-Masse) ->
+    TraitsLifeHistory)
+```
+
+The operation is completed by joining the tables using identical values in the `spName` column, which is common to both tibbles:
+
+```{r TraitsWoodLeaves, message=FALSE}
+TraitsWoodLeaves %>% 
+  left_join(TraitsLifeHistory) ->
+  Traits
+```
+
+The list of traits does not necessarily contain all the species on plot 6 (but it does contain hundreds of others, which are not needed here).
+Missing species must be added:
+  
+```{r MissingSpecies}
+MissingSpecies <- setdiff(names(AbdP6), Traits$spName)
+# Prepare additional lines
+Paracou6 %>% 
+  # Missing species
+  filter(spName %in% MissingSpecies) %>% 
+  # Select the columns
+  select(Family, Genus, spName) %>% 
+  # Delete duplicates
+  distinct ->
+  MissingRows
+Traits %<>% 
+  # Add missing rows
+  bind_rows(MissingRows) %>% 
+  # Family and Genus as factors
+  mutate(Family = as.factor(Family), Genus = as.factor(Genus))
+```
+
+The trait table contains missing values.
+The proportion of missing trait data, weighted by the number of individuals, is calculated:
+
+```{r MissingTraits}
+# Number of missing traits for each species
+apply(Traits, 1, function(x) sum(is.na(x))) %>%
+  # Divide by the number of lines to obtain a proportion
+  `/`(4) %>%
+  # Create a single-column tibble
+as_tibble_col(column_name = "MissingTraits") %>%
+  # Add it to the trait tibble
+  bind_cols(Traits) %>%
+  # Inner-join to the abundance tibble
+  inner_join(tblAbdP6) -> 
+  TraitsP6
+
+# Weighted proportion of missing traits
+sum(TraitsP6$MissingTraits * TraitsP6$Abundance) / sum(TraitsP6$Abundance)
+```
+
+
+### Filling in missing values
+
+Missing traits are filled in using the MICE procedure, which takes into account all the available information.
+The most complete table of traits possible (not limited to the species on plot 6) is used:
+
+```{r mice, eval=FALSE, echo=TRUE}
+# Fill in missing values (long calculation)
+library("mice")
+Traits %>% 
+  mice(print = FALSE) %>% 
+  complete() %>% 
+  # Backup 
+  write_csv2("data/traits.csv")
+```
+
+The calculation takes several minutes and is therefore not performed each time the tutorial is run.
+The result is read from the backup file:
+
+```{r Traits, message=FALSE}
+read_csv2("data/traits.csv") -> Traits
+```
+
+
+### Création d'une matrice de distance
+
+The Gower distance (course: section 6.3) is calculated between species.
+
+```{r Gower}
+library("cluster")
+# Use a dataframe to name the rows
+dfTraits <- as.data.frame(Traits)
+rownames(dfTraits) <- Traits$spName
+dfTraits %>% 
+  # Keep P6 species only
+  filter(spName %in% names(AbdP6)) %>% 
+  # Keep trait values only
+  select(-(Family:spName)) %>% 
+  # Compute distance between rows
+  daisy(metric="gower") ->
+  DistSpecies
+
+# Distribution of distances
+ggplot(data = data.frame(Distance = as.numeric(DistSpecies))) +
+  geom_density(aes(x = Distance))
+```
+
+The dissimilarity $\mathbf{Z}$ is calculated as the complement to the normalised maximum distance:
+  
+```{r Dissimilarites}
+# Dissimilarities
+DistSpecies %<>% as.matrix()
+Z <- 1 - DistSpecies / max(DistSpecies)
+```
+
+### Functional diversity profile
+
+Plot the diversity profile of Leinster and Cobbold.
+
+```{r Dqz, exercise=TRUE, exercise.timelimit=120}
+# Diversity Profile
+CommunityProfile(Dqz, AbdP6, Z = Z) %>% 
+  autoplot
+```
+
+
+```{r phylo-quiz, echo=FALSE}
+quiz(
+  question("What are the constraints of the phylogenetic tree in defining diversity?",
+           answer("It must be ultra-metric", correct = TRUE),
+           answer("Its height must be 1"),
+           answer("It must not have polytomies", correct = TRUE),
+           allow_retry = TRUE
+  ),
+  question("The tree can represent any distance, not necessarily a phylogeny.",
+           answer("True", correct = TRUE),
+           answer("False")
+  ),
+  question("Phylogenetic diversity is the average along the tree of the diversity at each period.",
+           answer("True"),
+           answer("False: this is true for entropy, but the transformation into diversity is not linear.", correct = TRUE),
+           answer("False: this isn't true for entropy either.")
+  )
+)
+```
+
+### Alternative approach
+
+The *FD* package and more recently the *fundiversity* package can be used to calculate the functional diversity indices of Villéger et al. (2008): richness (FRic), equitability (FEve) and divergence (FDiv).
+
+The data are prepared here for *fundiversity*: the inventory of the 4 subplots of plot 6 is placed in a dataframe, the first column of which contains the names of the sites and the others the numbers of species.
+The traits are in a matrix where the row names are the species names and the columns contain the trait values.
+
+```{r}
+# Subplot inventory
+Paracou6 %>% 
+  group_by(SubPlot, spName) %>% 
+  summarize(Abundance = n(), .groups = 'drop') %>% 
+  pivot_wider(names_from = spName, values_from = Abundance, values_fill = 0) ->
+  AbdP6_subplots
+
+# Traits
+Traits %>% 
+  select(spName:MasseGraine) %>% 
+  # filter(spName %in% names(AbdP6)) %>% 
+  arrange(spName) -> traits
+traits_matrix <- as.matrix(traits[, -1])
+rownames(traits_matrix) <- traits$spName
+
+library("fundiversity")
+# Richesse
+fd_fric(traits_matrix, AbdP6_subplots)
+# Divergence
+fd_fdiv(traits_matrix, AbdP6_subplots)
+# Evenness
+fd_feve(traits_matrix, AbdP6_subplots)
+```
+
+
+
+## Partitioning
+
+### Creation of a metacommunity
+
+#### Preparing a dataframe
+
+Each square in plot 6 is considered to be a local community derived from the meta-community formed by the entire plot.
+A dataframe containing the species in rows and the communities in columns is first created.
+
+```{r dfAbdP6SubPlots, echo=TRUE}
+Paracou6 %>% 
+  # Grouing
+  group_by(SubPlot, spName) %>% 
+  # Number of trees per species and subbplot
+  summarize(Abundance = n(), .groups = "drop") %>% 
+  # A column per subplot
+  spread(key = SubPlot, value = Abundance, fill = 0)  %>% 
+  # Use a dataframe to name the rows
+  as.data.frame ->
+  dfAbdP6SubPlots
+# Prepare a metacommunity: row names
+rownames(dfAbdP6SubPlots) <- dfAbdP6SubPlots$spName
+# Delete the column with species names
+dfAbdP6SubPlots <- dfAbdP6SubPlots[, -1]
+# Column names: C1, C2, C3 and C4
+colnames(dfAbdP6SubPlots) <- paste("C", colnames(dfAbdP6SubPlots), sep = "")
+```
+
+
+#### Creating the metacommunity
+
+The metacommunity is created by the `MetaCommunity()` function.
+The row names in the dataframe are optional, but allow to identify the species to which the abundances relate.
+
+```{r MetaCommunity, exercise=TRUE}
+Paracou6MC <- MetaCommunity(dfAbdP6SubPlots, Weights = colSums(dfAbdP6SubPlots))
+# Print a summary
+```
+
+The community weights can be arbitrary, but the estimators that can be used later are restricted if the weights are not abundances.
+
+
+### Partitioning the diversity
+
+Plot the $\alpha$, $\beta$ and $\gamma$ diversity profiles for plot 6 divided into subplots.
+Print the values.
+
+```{r DivProfile, exercise=TRUE, exercise.timelimit=120}
+Paracou6MC <- MetaCommunity(dfAbdP6SubPlots, Weights = colSums(dfAbdP6SubPlots))
+DivProfile(, Paracou6MC, Biased = FALSE, Correction = "UnveilJ") -> dp
+dp %>% autoplot()
+# Complete the code
+```
+
+Give the same weight to all communities and recalculate diversity.
+
+```{r divpart-quiz, echo=FALSE}
+quiz(
+  question("How is the data organised to create a metacommunity?",
+           answer("In a dataframe", correct = TRUE),
+           answer("In a matrix"),
+           answer("A column per community and a row per species", correct = TRUE),
+           answer("A column per species and a row per community"),
+           allow_retry = TRUE
+  ),
+  question("Alpha diversity is the weighted average of community diversity",
+           answer("True", correct = TRUE),
+           answer("False"),
+           incorrect = "See [the course](https://ericmarcon.github.io/MesuresBioDiv2/sec-betaCadre.html#sec-betaDecomposition)."
+  ),
+  question("Gamma diversity is the product of alpha and beta diversity",
+           answer("True", correct = TRUE),
+           answer("False"),
+           incorrect = "See [the course](https://ericmarcon.github.io/MesuresBioDiv2/chap-DedompHCDT.html)."
+  )
+)
+```
+ 
