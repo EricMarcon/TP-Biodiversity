@@ -3,7 +3,7 @@
 ![stability-stable](https://img.shields.io/badge/lifecycle-stable-brightgreen.svg)
 
 
-This practical works with **learnr**: run `TP-Biodiversite.Rmd` in RStudio.
+This practical works with **learnr**: run `Biodiv-Practical.Rmd` in RStudio.
 	    
 ## Course
 
