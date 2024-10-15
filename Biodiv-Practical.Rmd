@@ -55,7 +55,7 @@ Paracou6 <- read_csv2("data/Paracou6.csv")
 # AbdP6 : number of trees per species.
 Paracou6 %>% 
   group_by(spName) %>% 
-  summarize(Abundance = n(), .groups = 'drop') ->
+  summarize(Abundance = n()) ->
   # Tibble
   tblAbdP6
 # Build a named vector
@@ -63,7 +63,7 @@ AbdP6 <- tblAbdP6$Abundance
 names(AbdP6) <- tblAbdP6$spName
 # Abundance vector
 library("entropart")
-AbdP6 %>% as.AbdVector -> AbdP6
+AbdP6 %>% as.AbdVector() -> AbdP6
 
 # p6Phylo : Phylogeny
 library("ape")
@@ -77,7 +77,7 @@ Paracou6 %>%
   # Branch lengths are identical
   compute.brlen(method=1) %>% 
   # Turn multichotomies to dichotomies
-  multi2di  %>%  
+  multi2di() %>%  
   # Merge branches without divergence 
   collapse.singles ->
   p6Phylo
@@ -105,7 +105,7 @@ Paracou6 %>%
   # Grouing
   group_by(SubPlot, spName) %>% 
   # Number of trees per species and subbplot
-  summarize(Abundance = n(), .groups = "drop") %>% 
+  summarize(Abundance = n())  %>%  
   # A column per subplot
   spread(key = SubPlot, value = Abundance, fill = 0)  %>% 
   # Use a dataframe to name the rows
@@ -161,7 +161,7 @@ First create the vector of abundances.
 # Count
 Paracou6 %>% 
   group_by(spName) %>% 
-  summarize(Abundance = n(), .groups = 'drop') ->
+  summarize(Abundance = n()) ->
   # Tibble 
   tblAbdP6
 # Build a named vector
@@ -169,7 +169,7 @@ AbdP6 <- tblAbdP6$Abundance
 names(AbdP6) <- tblAbdP6$spName
 # Vector of abundances
 library("entropart")
-AbdP6 %>% as.AbdVector -> AbdP6
+AbdP6 %>% as.AbdVector() -> AbdP6
 ```
 
 Produce a Whittaker plot with ggplot, fitting a lognormal distribution.
@@ -237,7 +237,11 @@ The data must be abundance frequencies, i.e. the number of species represented b
 
 ```{r SPECIES, exercise=TRUE}
 library("SPECIES")
-AbdP6 %>% AbdFreqCount() %>% jackknife(k=2) %$% CI
+AbdP6 %>% 
+  # Format for SPECIES
+  AbdFreqCount() %>% 
+  # Estimate the jackknife and extract $CI from the list of results
+  jackknife(k=2) %$% CI
 ```
 
 "lb" and "ub" are the upper and lower bounds.
@@ -309,7 +313,7 @@ CommunityProfile(Diversity, AbdP6) %>% autoplot()
 Compare with the naive profile.
 
 ```{r Profil2, exercise=TRUE, message=FALSE}
-CommunityProfile(Diversity, AbdP6) %>% autoplot -> CPbest
+CommunityProfile(Diversity, AbdP6) %>% autoplot() -> CPbest
 CommunityProfile(Diversity, AbdP6, Correction = "None") %>% autoplot() -> CPnone
 library("gridExtra")
 grid.arrange(CPbest, CPnone, ncol = 2, nrow = 1)
@@ -395,9 +399,9 @@ Paracou6 %>%
   # Branch lengths are identical
   compute.brlen(method=1) %>% 
   # Turn multichotomies to dichotomies
-  multi2di  %>%  
+  multi2di() %>%  
   # Merge branches without divergence 
-  collapse.singles ->
+  collapse.singles() ->
   p6Phylo
 ```
 
@@ -426,7 +430,7 @@ phyShannon6 %>% summary()
 Explain the plot
 
 Plot the phylogenetic diversity profile.
-Reduce the number of points in `q.seq` and remplace `autoplot` by `plot` if the authorised calculation time is exceeded.
+Reduce the number of points in `q.seq` and replace `autoplot` by `plot` if the authorised calculation time is exceeded.
 
 ```{r phyProfil, exercise=TRUE, exercise.timelimit=120}
 CommunityProfile(
@@ -502,7 +506,7 @@ Paracou6 %>%
   # Select the columns
   select(Family, Genus, spName) %>% 
   # Delete duplicates
-  distinct ->
+  distinct() ->
   MissingRows
 Traits %<>% 
   # Add missing rows
@@ -593,7 +597,7 @@ Plot the diversity profile of Leinster and Cobbold.
 ```{r Dqz, exercise=TRUE, exercise.timelimit=120}
 # Diversity Profile
 CommunityProfile(Dqz, AbdP6, Z = Z) %>% 
-  autoplot
+  autoplot()
 ```
 
 
@@ -628,7 +632,7 @@ The traits are in a matrix where the row names are the species names and the col
 # Subplot inventory
 Paracou6 %>% 
   group_by(SubPlot, spName) %>% 
-  summarize(Abundance = n(), .groups = 'drop') %>% 
+  summarize(Abundance = n()) %>% 
   pivot_wider(names_from = spName, values_from = Abundance, values_fill = 0) ->
   AbdP6_subplots
 
@@ -665,7 +669,7 @@ Paracou6 %>%
   # Grouing
   group_by(SubPlot, spName) %>% 
   # Number of trees per species and subbplot
-  summarize(Abundance = n(), .groups = "drop") %>% 
+  summarize(Abundance = n()) %>% 
   # A column per subplot
   spread(key = SubPlot, value = Abundance, fill = 0)  %>% 
   # Use a dataframe to name the rows
